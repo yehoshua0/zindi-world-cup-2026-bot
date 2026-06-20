@@ -2,7 +2,6 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
-from wc2026bot.feeds.base import fetch_with_fallback
 from wc2026bot.state import apply_result
 
 log = logging.getLogger(__name__)

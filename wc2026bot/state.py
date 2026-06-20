@@ -81,7 +81,8 @@ def apply_result(conn: sqlite3.Connection, r: MatchResult) -> bool:
             home_score=excluded.home_score,
             away_score=excluded.away_score,
             status=excluded.status,
-            match_stage=CASE WHEN excluded.match_stage != 'unknown'
+            match_stage=CASE WHEN excluded.match_stage IN
+                               ('group','roundof32','roundof16','qf','sf','final')
                              THEN excluded.match_stage ELSE matches.match_stage END,
             kickoff_time=CASE WHEN excluded.kickoff_time != ''
                               THEN excluded.kickoff_time ELSE matches.kickoff_time END

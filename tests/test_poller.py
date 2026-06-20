@@ -26,3 +26,14 @@ def test_poll_once_returns_newly_finished():
     assert asyncio.run(poll_once(c, [Client("FINISHED")])) == ["espn-1"]
     # third cycle: still finished -> idempotent, no new finish
     assert asyncio.run(poll_once(c, [Client("FINISHED")])) == []
+
+def test_poll_once_continues_when_a_client_throws():
+    c = connect(":memory:"); init_db(c); seed_teams(c, load_teams("data/teams.csv"))
+    class Boom:
+        async def fetch(self): raise Exception("boom")
+    class Good:
+        async def fetch(self):
+            return [MatchResult("m_x", "WC-2026_AUT", "WC-2026_BEL", 1, 0,
+                    "FINISHED", "group", "2026-06-15T18:00:00Z")]
+    res = asyncio.run(poll_once(c, [Boom(), Good()]))
+    assert res == ["m_x"]

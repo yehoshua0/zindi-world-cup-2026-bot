@@ -39,6 +39,8 @@ class EspnClient:
                 winner = home.zindi_id
             elif as_ > hs:
                 winner = away.zindi_id
+            if status != "FINISHED":
+                winner = None
             out.append(MatchResult(
                 match_id=make_match_id(home.zindi_id, away.zindi_id, kickoff),
                 home_team_id=home.zindi_id, away_team_id=away.zindi_id,
