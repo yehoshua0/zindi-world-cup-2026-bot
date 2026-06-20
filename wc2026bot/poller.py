@@ -42,8 +42,13 @@ async def run_poller(conn, clients, on_finished, stop_event) -> None:
             nk = conn.execute(
                 "SELECT MIN(kickoff_time) k FROM matches WHERE status='SCHEDULED'"
             ).fetchone()["k"]
-            next_kickoff = (datetime.fromisoformat(nk.replace("Z", "+00:00"))
-                            if nk else None)
+            next_kickoff = None
+            if nk:
+                try:
+                    next_kickoff = datetime.fromisoformat(
+                        nk.replace("Z", "+00:00"))
+                except ValueError:
+                    next_kickoff = None
             delay = poll_interval(datetime.now().astimezone(),
                                   next_kickoff, any_live)
         except Exception as e:  # noqa: BLE001

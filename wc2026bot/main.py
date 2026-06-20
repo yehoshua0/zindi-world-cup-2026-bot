@@ -1,6 +1,8 @@
 import asyncio
 import hashlib
 import logging
+import signal
+from pathlib import Path
 
 import httpx
 from telegram import Update
@@ -20,11 +22,12 @@ logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("wc2026bot")
 
 
-def build_app():
+def build_app() -> tuple:
     s = load_settings()
     conn = connect(s.db_path)
     init_db(conn)
-    teams = load_teams("data/teams.csv")
+    teams_path = Path(__file__).resolve().parent.parent / "data" / "teams.csv"
+    teams = load_teams(str(teams_path))
     seed_teams(conn, teams)
     team_names = {t.zindi_id: t.country for t in teams.values()}
     valid_ids = set(teams.keys())
@@ -92,24 +95,32 @@ def build_app():
                 except Exception as e:  # noqa: BLE001
                     log.warning("push to %s failed: %s", cid, e)
 
-    return app, conn, clients, on_finished
+    return app, conn, clients, on_finished, http
 
 
 async def _run():
-    app, conn, clients, on_finished = build_app()
+    app, conn, clients, on_finished, http = build_app()
     stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, stop.set)
+        except (NotImplementedError, AttributeError):
+            pass  # not supported on this platform (e.g. Windows)
     async with app:
         await app.start()
         await app.updater.start_polling()
         poller_task = asyncio.create_task(
             run_poller(conn, clients, on_finished, stop))
         try:
-            await asyncio.Event().wait()  # run forever
+            await stop.wait()
         finally:
             stop.set()
             await poller_task
+            await http.aclose()
             await app.updater.stop()
             await app.stop()
+            conn.close()
 
 
 def main() -> None:
