@@ -52,6 +52,8 @@ def advance_stage(conn: sqlite3.Connection, team_id: str, new_stage: str) -> Non
         (team_id,)).fetchone()
     if cur is None:
         return
+    if new_stage not in STAGE_ORDINAL or cur["current_stage"] not in STAGE_ORDINAL:
+        return
     if STAGE_ORDINAL[new_stage] > STAGE_ORDINAL[cur["current_stage"]]:
         conn.execute("UPDATE teams_state SET current_stage=? WHERE team_id=?",
                      (new_stage, team_id))

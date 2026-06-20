@@ -44,3 +44,15 @@ def test_goals_accumulate_over_two_matches():
     aut = c.execute("SELECT actual_goals FROM teams_state WHERE team_id=?",
                     ("WC-2026_AUT",)).fetchone()["actual_goals"]
     assert aut == 5
+
+def test_apply_result_unknown_stage_does_not_crash():
+    c = _conn()
+    # Use an unrecognized match_stage ("third_place" not in MATCH_STAGE_TO_REACHED)
+    r = MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL", 2, 1,
+                    "FINISHED", "third_place", "2026-06-15T18:00:00Z")
+    # Should return True (newly finished) and not raise
+    assert apply_result(c, r) is True
+    # Goals should be recomputed
+    aut = c.execute("SELECT actual_goals FROM teams_state WHERE team_id=?",
+                    ("WC-2026_AUT",)).fetchone()["actual_goals"]
+    assert aut == 2
