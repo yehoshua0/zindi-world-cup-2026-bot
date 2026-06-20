@@ -5,8 +5,12 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   user_id INTEGER PRIMARY KEY AUTOINCREMENT,
   telegram_chat_id INTEGER UNIQUE NOT NULL,
+  display_name TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
+-- Unique display names (case-insensitive); multiple NULLs allowed by SQLite.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name
+  ON users(display_name COLLATE NOCASE);
 CREATE TABLE IF NOT EXISTS submissions (
   submission_id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -54,6 +58,10 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
+    # Migration: add display_name to a pre-existing users table (no-op if present).
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    if cols and "display_name" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
     conn.executescript(SCHEMA)
     conn.commit()
 

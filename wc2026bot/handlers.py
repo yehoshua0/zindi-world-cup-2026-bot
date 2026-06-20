@@ -3,14 +3,21 @@ import sqlite3
 from wc2026bot.notify import cohort_scores, user_metrics
 from wc2026bot.validation import ParsedRow
 
+NAME_MIN, NAME_MAX = 2, 32
+
+
+class SetNameError(Exception):
+    pass
+
 
 def cmd_start_text() -> str:
     return (
         "⚽ WC2026 Live Tracker\n\n"
+        "First pick a name: /setname <your name>\n\n"
+        "/setname <name> — set your leaderboard name (required)\n"
         "/upload — send your submission CSV (reply with the file)\n"
         "/me — your live RMSE, F1, rank\n"
         "/rank — leaderboard\n"
-        "/today — today's matches\n"
         "/team <ISO3> — a team's status\n"
         "/help — this message")
 
@@ -28,6 +35,36 @@ def _user_id(conn: sqlite3.Connection, chat_id: int) -> int | None:
     r = conn.execute("SELECT user_id FROM users WHERE telegram_chat_id=?",
                      (chat_id,)).fetchone()
     return r["user_id"] if r else None
+
+
+def display_name(conn: sqlite3.Connection, chat_id: int) -> str | None:
+    r = conn.execute("SELECT display_name FROM users WHERE telegram_chat_id=?",
+                     (chat_id,)).fetchone()
+    return r["display_name"] if r and r["display_name"] else None
+
+
+def set_display_name(conn: sqlite3.Connection, chat_id: int, name: str) -> str:
+    name = " ".join(name.split())  # collapse whitespace
+    if not (NAME_MIN <= len(name) <= NAME_MAX):
+        raise SetNameError(
+            f"Name must be {NAME_MIN}-{NAME_MAX} characters.")
+    register_user(conn, chat_id)
+    taken = conn.execute(
+        "SELECT 1 FROM users WHERE display_name=? COLLATE NOCASE "
+        "AND telegram_chat_id<>?", (name, chat_id)).fetchone()
+    if taken:
+        raise SetNameError(f"Name '{name}' is already taken. Pick another.")
+    conn.execute("UPDATE users SET display_name=? WHERE telegram_chat_id=?",
+                 (name, chat_id))
+    conn.commit()
+    return name
+
+
+def needs_name_msg(conn: sqlite3.Connection, chat_id: int) -> str | None:
+    """Return a prompt string if the user has no name yet, else None."""
+    if display_name(conn, chat_id) is None:
+        return "Please set a name first: /setname <your name>"
+    return None
 
 
 def store_submission(conn: sqlite3.Connection, chat_id: int,
@@ -72,9 +109,12 @@ def rank_text(conn: sqlite3.Connection, top: int = 10) -> str:
     scores = cohort_scores(conn)
     if not scores:
         return "No submissions yet."
+    names = {r["user_id"]: r["display_name"] for r in conn.execute(
+        "SELECT user_id, display_name FROM users")}
     lines = ["🏆 Leaderboard (live)"]
     for u in scores[:top]:
-        lines.append(f"{u.rank}. user {u.user_id} — "
+        who = names.get(u.user_id) or f"user {u.user_id}"
+        lines.append(f"{u.rank}. {who} — "
                      f"score {u.combined:.3f} (F1 {u.f1:.3f})")
     return "\n".join(lines)
 

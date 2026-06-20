@@ -51,7 +51,24 @@ def build_app() -> tuple:
     async def help_cmd(update: Update, _ctx):
         await update.message.reply_text(handlers.cmd_start_text())
 
+    async def setname(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        if not ctx.args:
+            await update.message.reply_text("Usage: /setname <your name>")
+            return
+        try:
+            name = handlers.set_display_name(
+                conn, update.effective_chat.id, " ".join(ctx.args))
+        except handlers.SetNameError as e:
+            await update.message.reply_text(f"❌ {e}")
+            return
+        await update.message.reply_text(
+            f"✅ Name set to '{name}'. Now /upload your predictions.")
+
     async def me(update: Update, _ctx):
+        gate = handlers.needs_name_msg(conn, update.effective_chat.id)
+        if gate:
+            await update.message.reply_text(gate)
+            return
         await update.message.reply_text(
             handlers.me_text(conn, update.effective_chat.id))
 
@@ -59,6 +76,10 @@ def build_app() -> tuple:
         await update.message.reply_text(handlers.rank_text(conn))
 
     async def team(update: Update, ctx):
+        gate = handlers.needs_name_msg(conn, update.effective_chat.id)
+        if gate:
+            await update.message.reply_text(gate)
+            return
         if not ctx.args:
             await update.message.reply_text("Usage: /team <ISO3>")
             return
@@ -67,6 +88,10 @@ def build_app() -> tuple:
                                ctx.args[0], team_names))
 
     async def upload_doc(update: Update, _ctx):
+        gate = handlers.needs_name_msg(conn, update.effective_chat.id)
+        if gate:
+            await update.message.reply_text(gate)
+            return
         doc = update.message.document
         if doc is None:
             await update.message.reply_text("Reply with a .csv file.")
@@ -93,12 +118,17 @@ def build_app() -> tuple:
            .pool_timeout(10.0)
            .build())
     async def upload_cmd(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
+        gate = handlers.needs_name_msg(conn, update.effective_chat.id)
+        if gate:
+            await update.message.reply_text(gate)
+            return
         await update.message.reply_text(
             "Send me your submission as a .csv file attachment "
             "(columns: ID, total_goals, Target).")
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("setname", setname))
     app.add_handler(CommandHandler("upload", upload_cmd))
     app.add_handler(CommandHandler("me", me))
     app.add_handler(CommandHandler("rank", rank))
