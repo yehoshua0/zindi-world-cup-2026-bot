@@ -1,3 +1,4 @@
+import asyncio
 import httpx
 import logging
 from wc2026bot.state import MatchResult, make_match_id
@@ -23,7 +24,17 @@ class FootballDataClient:
             return []
         headers = {"X-Auth-Token": self._key}
         resp = await self._http.get(URL, headers=headers)
+        # Football-Data throttles on the free tier; honor Retry-After once.
+        if resp.status_code == 429:
+            retry = resp.headers.get("Retry-After", "60")
+            retry_s = int(retry) if str(retry).isdigit() else 60
+            log.warning("fd: rate limited, retrying after %ss", retry_s)
+            await asyncio.sleep(retry_s)
+            resp = await self._http.get(URL, headers=headers)
         resp.raise_for_status()
+        remaining = resp.headers.get("X-Requests-Available-Minute")
+        if remaining is not None and str(remaining).isdigit() and int(remaining) <= 1:
+            log.info("fd: throttle low, %s request(s) left this minute", remaining)
         out: list[MatchResult] = []
         for m in resp.json().get("matches", []):
             home = self._teams.get(m["homeTeam"].get("name", ""))

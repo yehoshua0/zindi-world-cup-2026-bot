@@ -23,6 +23,11 @@ log = logging.getLogger("wc2026bot")
 
 
 def build_app() -> tuple:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()  # load a local .env if present; no-op otherwise
+    except ImportError:
+        pass
     s = load_settings()
     conn = connect(s.db_path)
     init_db(conn)
@@ -32,9 +37,11 @@ def build_app() -> tuple:
     team_names = {t.zindi_id: t.country for t in teams.values()}
     valid_ids = set(teams.keys())
     http = httpx.AsyncClient(timeout=15)
+    # FD first (authoritative stage), ESPN last so its fresher live score
+    # wins; stage-precedence in apply_result protects FD's known stage.
     clients = [
-        EspnClient(by_espn_name(teams), http),
         FootballDataClient(by_fd_name(teams), http, s.footballdata_key),
+        EspnClient(by_espn_name(teams), http),
     ]
 
     async def start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):

@@ -7,13 +7,16 @@ before trusting (see Task 7 verification step).
 import csv
 
 # country -> (espn_name, fd_name); default is country itself.
+# fd_name values verified against the live Football-Data /competitions/WC/matches
+# feed on 2026-06-20. espn_name still pending a live ESPN verification pass.
 OVERRIDES = {
-    "Czechia": ("Czech Republic", "Czech Republic"),
-    "Turkiye": ("Turkey", "Türkiye"),
-    "Cote d'Ivoire": ("Ivory Coast", "Côte d'Ivoire"),
-    "DR Congo": ("Congo DR", "DR Congo"),
-    "South Korea": ("South Korea", "Korea Republic"),
-    "Cabo Verde": ("Cape Verde", "Cabo Verde"),
+    "Czechia": ("Czech Republic", "Czechia"),
+    "Turkiye": ("Turkey", "Turkey"),
+    "Cote d'Ivoire": ("Ivory Coast", "Ivory Coast"),
+    "DR Congo": ("Congo DR", "Congo DR"),
+    "South Korea": ("South Korea", "South Korea"),
+    "Cabo Verde": ("Cape Verde", "Cape Verde Islands"),
+    "Bosnia and Herzegovina": ("Bosnia and Herzegovina", "Bosnia-Herzegovina"),
     "Curacao": ("Curaçao", "Curaçao"),
     "United States": ("United States", "United States"),
 }
