@@ -1,6 +1,6 @@
 import httpx
 import logging
-from wc2026bot.state import MatchResult
+from wc2026bot.state import MatchResult, make_match_id
 from wc2026bot.teams import Team
 
 log = logging.getLogger(__name__)
@@ -32,13 +32,23 @@ class FootballDataClient:
                 log.info("fd: skip unmapped match %s", m.get("id"))
                 continue
             ft = m.get("score", {}).get("fullTime", {})
+            hs = ft.get("home") or 0
+            as_ = ft.get("away") or 0
+            kickoff = m.get("utcDate", "")
+            winner_code = m.get("score", {}).get("winner")
+            winner = None
+            if winner_code == "HOME_TEAM":
+                winner = home.zindi_id
+            elif winner_code == "AWAY_TEAM":
+                winner = away.zindi_id
             out.append(MatchResult(
-                match_id=f"fd-{m['id']}",
+                match_id=make_match_id(home.zindi_id, away.zindi_id, kickoff),
                 home_team_id=home.zindi_id, away_team_id=away.zindi_id,
-                home_score=ft.get("home") or 0, away_score=ft.get("away") or 0,
+                home_score=hs, away_score=as_,
                 status=STATUS_MAP.get(m.get("status", ""), "SCHEDULED"),
                 match_stage=_fd_stage(m.get("stage", "")),
-                kickoff_time=m.get("utcDate", "")))
+                kickoff_time=kickoff,
+                winner_team_id=winner))
         return out
 
 
@@ -47,4 +57,4 @@ def _fd_stage(stage: str) -> str:
         "GROUP_STAGE": "group", "LAST_32": "roundof32",
         "LAST_16": "roundof16", "QUARTER_FINALS": "qf",
         "SEMI_FINALS": "sf", "FINAL": "final",
-    }.get(stage, "group")
+    }.get(stage, "unknown")

@@ -18,11 +18,16 @@ def poll_interval(now: datetime, next_kickoff: datetime | None,
 
 
 async def poll_once(conn, clients) -> list[str]:
-    results = await fetch_with_fallback(clients)
     finished: list[str] = []
-    for r in results:
-        if apply_result(conn, r):
-            finished.append(r.match_id)
+    for c in clients:
+        try:
+            results = await c.fetch()
+        except Exception as e:  # noqa: BLE001
+            log.warning("feed %s failed: %s", type(c).__name__, e)
+            continue
+        for r in results:
+            if apply_result(conn, r):
+                finished.append(r.match_id)
     return finished
 
 

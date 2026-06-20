@@ -56,3 +56,11 @@ def test_apply_result_unknown_stage_does_not_crash():
     aut = c.execute("SELECT actual_goals FROM teams_state WHERE team_id=?",
                     ("WC-2026_AUT",)).fetchone()["actual_goals"]
     assert aut == 2
+
+
+def test_make_match_id_stable_across_orientation():
+    from wc2026bot.state import make_match_id
+    a = make_match_id("WC-2026_AUT", "WC-2026_BEL", "2026-06-15T18:00Z")
+    b = make_match_id("WC-2026_BEL", "WC-2026_AUT", "2026-06-15T20:00Z")
+    # same teams + same date -> same id regardless of home/away or time-of-day
+    assert a == b
