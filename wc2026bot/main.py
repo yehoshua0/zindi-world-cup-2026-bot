@@ -85,13 +85,32 @@ def build_app() -> tuple:
         await update.message.reply_text(
             "✅ Submission stored. /me for your live standing.")
 
-    app = Application.builder().token(s.bot_token).build()
+    app = (Application.builder()
+           .token(s.bot_token)
+           .connect_timeout(10.0)
+           .read_timeout(20.0)
+           .write_timeout(20.0)
+           .pool_timeout(10.0)
+           .build())
+    async def upload_cmd(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
+        await update.message.reply_text(
+            "Send me your submission as a .csv file attachment "
+            "(columns: ID, total_goals, Target).")
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("upload", upload_cmd))
     app.add_handler(CommandHandler("me", me))
     app.add_handler(CommandHandler("rank", rank))
     app.add_handler(CommandHandler("team", team))
     app.add_handler(MessageHandler(filters.Document.ALL, upload_doc))
+
+    async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
+        # Transient network blips (TimedOut, ConnectTimeout) are expected;
+        # log one line instead of a full traceback.
+        log.warning("update error: %s", ctx.error)
+
+    app.add_error_handler(on_error)
 
     async def on_finished(match_ids: list[str]):
         for mid in match_ids:
