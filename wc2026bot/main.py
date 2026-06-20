@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import logging
 import signal
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -75,6 +76,17 @@ def build_app() -> tuple:
     async def rank(update: Update, _ctx):
         await update.message.reply_text(handlers.rank_text(conn))
 
+    async def today(update: Update, _ctx):
+        d = datetime.now().astimezone().date().isoformat()
+        await update.message.reply_text(
+            handlers.matches_on_text(conn, d, team_names, "today"))
+
+    async def yesterday(update: Update, _ctx):
+        d = (datetime.now().astimezone().date()
+             - timedelta(days=1)).isoformat()
+        await update.message.reply_text(
+            handlers.matches_on_text(conn, d, team_names, "yesterday"))
+
     async def team(update: Update, ctx):
         gate = handlers.needs_name_msg(conn, update.effective_chat.id)
         if gate:
@@ -132,6 +144,8 @@ def build_app() -> tuple:
     app.add_handler(CommandHandler("upload", upload_cmd))
     app.add_handler(CommandHandler("me", me))
     app.add_handler(CommandHandler("rank", rank))
+    app.add_handler(CommandHandler("today", today))
+    app.add_handler(CommandHandler("yesterday", yesterday))
     app.add_handler(CommandHandler("team", team))
     app.add_handler(MessageHandler(filters.Document.ALL, upload_doc))
 

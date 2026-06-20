@@ -5,7 +5,7 @@ from wc2026bot.teams import load_teams
 from wc2026bot.validation import parse_submission
 from wc2026bot.handlers import (register_user, store_submission, me_text,
                                 rank_text, set_display_name, display_name,
-                                needs_name_msg, SetNameError)
+                                needs_name_msg, SetNameError, matches_on_text)
 
 def _full_csv():
     teams = load_teams("data/teams.csv")
@@ -73,3 +73,33 @@ def test_rank_shows_display_name():
     store_submission(c, 555, rows, "h1")
     out = rank_text(c)
     assert "Zuno" in out and "user " not in out
+
+def test_rank_excludes_unnamed_users():
+    c = _conn()
+    ids = set(load_teams("data/teams.csv").keys())
+    rows = parse_submission(_full_csv(), ids)
+    register_user(c, 100)  # no display_name
+    store_submission(c, 100, rows, "h1")
+    assert rank_text(c) == "No submissions yet."  # nobody named -> empty board
+    set_display_name(c, 200, "Named")
+    store_submission(c, 200, rows, "h2")
+    out = rank_text(c)
+    assert "Named" in out and "user " not in out
+
+def test_matches_on_text():
+    c = _conn()
+    names = {t.zindi_id: t.country for t in load_teams("data/teams.csv").values()}
+    ha, aw = list(names)[0], list(names)[1]
+    c.execute("INSERT INTO matches(match_id, home_team_id, away_team_id, "
+              "home_score, away_score, status, match_stage, kickoff_time) "
+              "VALUES ('m1',?,?,2,1,'FINISHED','group','2026-06-21T18:00:00Z')",
+              (ha, aw))
+    c.execute("INSERT INTO matches(match_id, home_team_id, away_team_id, "
+              "status, match_stage, kickoff_time) "
+              "VALUES ('m2',?,?,'SCHEDULED','group','2026-06-21T21:00:00Z')",
+              (ha, aw))
+    c.commit()
+    out = matches_on_text(c, "2026-06-21", names, "today")
+    assert "🏁" in out and "2-1" in out and "⏰ 21:00" in out
+    assert matches_on_text(c, "2026-06-20", names, "yesterday") \
+        == "No matches yesterday (2026-06-20)."

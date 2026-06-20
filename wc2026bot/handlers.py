@@ -19,6 +19,8 @@ def cmd_start_text() -> str:
         "/me — your live RMSE, F1, rank\n"
         "/rank — leaderboard\n"
         "/team <ISO3> — a team's status\n"
+        "/today — today's matches\n"
+        "/yesterday — yesterday's matches\n"
         "/help — this message")
 
 
@@ -106,15 +108,16 @@ def me_text(conn: sqlite3.Connection, chat_id: int) -> str:
 
 
 def rank_text(conn: sqlite3.Connection, top: int = 10) -> str:
-    scores = cohort_scores(conn)
-    if not scores:
-        return "No submissions yet."
     names = {r["user_id"]: r["display_name"] for r in conn.execute(
-        "SELECT user_id, display_name FROM users")}
+        "SELECT user_id, display_name FROM users "
+        "WHERE display_name IS NOT NULL")}
+    # Only named users on the board; unnamed ones never show as "user N".
+    named = [u for u in cohort_scores(conn) if names.get(u.user_id)]
+    if not named:
+        return "No submissions yet."
     lines = ["🏆 Leaderboard (live)"]
-    for u in scores[:top]:
-        who = names.get(u.user_id) or f"user {u.user_id}"
-        lines.append(f"{u.rank}. {who} — "
+    for u in named[:top]:
+        lines.append(f"{u.rank}. {names[u.user_id]} — "
                      f"score {u.combined:.3f} (F1 {u.f1:.3f})")
     return "\n".join(lines)
 
@@ -138,3 +141,26 @@ def team_text(conn: sqlite3.Connection, chat_id: int, iso3: str,
             base += (f"\nYour pick: {p['predicted_goals']:.1f} goals, "
                      f"{p['predicted_stage']}")
     return base
+
+
+def matches_on_text(conn: sqlite3.Connection, date_iso: str,
+                    team_names: dict[str, str], label: str) -> str:
+    rows = conn.execute(
+        "SELECT home_team_id, away_team_id, home_score, away_score, status, "
+        "kickoff_time FROM matches WHERE substr(kickoff_time,1,10)=? "
+        "ORDER BY kickoff_time", (date_iso,)).fetchall()
+    if not rows:
+        return f"No matches {label} ({date_iso})."
+    lines = [f"📅 Matches {label} ({date_iso})"]
+    for m in rows:
+        h = team_names.get(m["home_team_id"], m["home_team_id"])
+        a = team_names.get(m["away_team_id"], m["away_team_id"])
+        if m["status"] == "SCHEDULED":
+            kt = m["kickoff_time"] or ""
+            t = kt[11:16] if len(kt) >= 16 else ""
+            lines.append(f"⏰ {t} {h} vs {a}".rstrip())
+        else:
+            emoji = "🔴" if m["status"] == "LIVE" else "🏁"
+            lines.append(f"{emoji} {h} {m['home_score']}-"
+                         f"{m['away_score']} {a}")
+    return "\n".join(lines)
