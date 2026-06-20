@@ -18,4 +18,5 @@ async def fetch_with_fallback(clients: list[FeedClient]) -> list[MatchResult]:
                 return res
         except Exception as e:  # noqa: BLE001
             log.warning("feed %s failed: %s", type(c).__name__, e)
+    log.warning("fetch_with_fallback: all %d clients returned empty", len(clients))
     return []

@@ -1,3 +1,4 @@
+import httpx
 import logging
 from wc2026bot.state import MatchResult
 from wc2026bot.teams import Team
@@ -11,7 +12,7 @@ STATUS_MAP = {
 
 
 class FootballDataClient:
-    def __init__(self, teams_by_fd: dict[str, Team], http,
+    def __init__(self, teams_by_fd: dict[str, Team], http: httpx.AsyncClient,
                  api_key: str | None) -> None:
         self._teams = teams_by_fd
         self._http = http

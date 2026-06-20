@@ -1,3 +1,4 @@
+import httpx
 import logging
 from wc2026bot.state import MatchResult
 from wc2026bot.teams import Team
@@ -9,7 +10,7 @@ STATE_MAP = {"pre": "SCHEDULED", "in": "LIVE", "post": "FINISHED"}
 
 
 class EspnClient:
-    def __init__(self, teams_by_espn: dict[str, Team], http) -> None:
+    def __init__(self, teams_by_espn: dict[str, Team], http: httpx.AsyncClient) -> None:
         self._teams = teams_by_espn
         self._http = http
 
@@ -20,6 +21,7 @@ class EspnClient:
         for ev in resp.json().get("events", []):
             comp = ev["competitions"][0]
             home = away = None
+            hs = as_ = 0
             for c in comp["competitors"]:
                 t = self._teams.get(c["team"]["displayName"])
                 if c["homeAway"] == "home":

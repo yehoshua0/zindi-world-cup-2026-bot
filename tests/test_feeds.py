@@ -1,4 +1,4 @@
-import json, asyncio
+import asyncio
 import pytest
 from wc2026bot.teams import load_teams, by_espn_name
 from wc2026bot.feeds.espn import EspnClient
