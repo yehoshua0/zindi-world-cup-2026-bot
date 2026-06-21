@@ -1,5 +1,4 @@
 import hashlib
-import pytest
 from wc2026bot.db import connect, init_db, seed_teams, log_event, snapshot_leaderboard
 from wc2026bot.teams import load_teams
 from wc2026bot.validation import parse_submission

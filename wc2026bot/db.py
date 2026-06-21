@@ -102,9 +102,9 @@ def log_event(conn: sqlite3.Connection, event: str,
 
 
 def snapshot_leaderboard(conn: sqlite3.Connection) -> int:
-    from datetime import date
+    from datetime import datetime, timezone
     from wc2026bot.notify import cohort_scores, user_metrics
-    today = date.today().isoformat()
+    today = datetime.now(timezone.utc).date().isoformat()
     exists = conn.execute(
         "SELECT 1 FROM leaderboard_snapshots WHERE snapshot_date=? LIMIT 1",
         (today,)).fetchone()

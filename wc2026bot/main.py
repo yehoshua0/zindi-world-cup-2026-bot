@@ -28,10 +28,10 @@ async def run_daily_snapshot(conn, stop_event: asyncio.Event) -> None:
     from datetime import timezone
     while not stop_event.is_set():
         now = datetime.now(timezone.utc)
-        # Next 00:05 UTC
-        tomorrow = (now + timedelta(days=1)).replace(
-            hour=0, minute=5, second=0, microsecond=0)
-        delay = (tomorrow - now).total_seconds()
+        target = now.replace(hour=0, minute=5, second=0, microsecond=0)
+        if target <= now:
+            target += timedelta(days=1)
+        delay = (target - now).total_seconds()
         try:
             await asyncio.wait_for(stop_event.wait(), timeout=delay)
         except asyncio.TimeoutError:
@@ -40,7 +40,8 @@ async def run_daily_snapshot(conn, stop_event: asyncio.Event) -> None:
             break
         try:
             inserted = snapshot_leaderboard(conn)
-            log_event(conn, "leaderboard_snapshot")
+            if inserted > 0:
+                log_event(conn, "leaderboard_snapshot")
             log.info("leaderboard snapshot: %d rows", inserted)
         except Exception as e:  # noqa: BLE001
             log.warning("snapshot failed: %s", e)
