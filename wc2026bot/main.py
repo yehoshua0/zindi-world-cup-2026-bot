@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import httpx
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import (Application, CommandHandler, MessageHandler,
                           ContextTypes, filters)
 
@@ -180,12 +180,31 @@ def build_app() -> tuple:
         await update.message.reply_text(
             "✅ Submission stored. /me for your live standing.")
 
+    async def _post_init(application: Application) -> None:
+        cmds = [
+            BotCommand("start", "Start the bot"),
+            BotCommand("help", "Show help"),
+            BotCommand("setname", "Set your team name"),
+            BotCommand("upload", "Upload your submission CSV"),
+            BotCommand("me", "Your predictions and score"),
+            BotCommand("rank", "Your rank on the leaderboard"),
+            BotCommand("today", "Today's matches"),
+            BotCommand("yesterday", "Yesterday's results"),
+            BotCommand("team", "Team info"),
+            BotCommand("scorers", "Top scorers"),
+            BotCommand("standings", "Group standings"),
+            BotCommand("feedback", "Send feedback"),
+        ]
+        await application.bot.set_my_commands(cmds)
+        log.info("registered %d bot commands", len(cmds))
+
     app = (Application.builder()
            .token(s.bot_token)
            .connect_timeout(10.0)
            .read_timeout(20.0)
            .write_timeout(20.0)
            .pool_timeout(10.0)
+           .post_init(_post_init)
            .build())
     async def upload_cmd(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         gate = handlers.needs_name_msg(conn, update.effective_chat.id)
