@@ -188,8 +188,10 @@ def build_app() -> tuple:
                     conn, mid, team_names, kind=kind):
                 try:
                     await app.bot.send_message(cid, text)
+                    log_event(conn, f"notify_{kind}_ok", cid)
                 except Exception as e:  # noqa: BLE001
                     log.warning("push to %s failed: %s", cid, e)
+                    log_event(conn, f"notify_{kind}_fail", cid)
 
     async def on_finished(match_ids: list[str]):
         await _push(match_ids, "finish")
