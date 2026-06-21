@@ -40,8 +40,9 @@ def build_app() -> tuple:
     http = httpx.AsyncClient(timeout=15)
     # FD first (authoritative stage), ESPN last so its fresher live score
     # wins; stage-precedence in apply_result protects FD's known stage.
+    fd_client = FootballDataClient(by_fd_name(teams), http, s.footballdata_key)
     clients = [
-        FootballDataClient(by_fd_name(teams), http, s.footballdata_key),
+        fd_client,
         EspnClient(by_espn_name(teams), http),
     ]
 
@@ -86,6 +87,15 @@ def build_app() -> tuple:
              - timedelta(days=1)).isoformat()
         await update.message.reply_text(
             handlers.matches_on_text(conn, d, team_names, "yesterday"))
+
+    async def scorers(update: Update, _ctx):
+        data = await fd_client.fetch_scorers(limit=10)
+        await update.message.reply_text(handlers.scorers_text(data))
+
+    async def standings(update: Update, ctx):
+        data = await fd_client.fetch_standings()
+        grp = ctx.args[0] if ctx.args else None
+        await update.message.reply_text(handlers.standings_text(data, grp))
 
     async def team(update: Update, ctx):
         gate = handlers.needs_name_msg(conn, update.effective_chat.id)
@@ -147,6 +157,8 @@ def build_app() -> tuple:
     app.add_handler(CommandHandler("today", today))
     app.add_handler(CommandHandler("yesterday", yesterday))
     app.add_handler(CommandHandler("team", team))
+    app.add_handler(CommandHandler("scorers", scorers))
+    app.add_handler(CommandHandler("standings", standings))
     app.add_handler(MessageHandler(filters.Document.ALL, upload_doc))
 
     async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
@@ -156,20 +168,26 @@ def build_app() -> tuple:
 
     app.add_error_handler(on_error)
 
-    async def on_finished(match_ids: list[str]):
+    async def _push(match_ids: list[str], kind: str):
         for mid in match_ids:
-            msg = notify.build_finish_message(conn, mid, team_names)
-            for cid in notify.affected_users(conn, mid):
+            for cid, text in notify.personalized_messages(
+                    conn, mid, team_names, kind=kind):
                 try:
-                    await app.bot.send_message(cid, msg)
+                    await app.bot.send_message(cid, text)
                 except Exception as e:  # noqa: BLE001
                     log.warning("push to %s failed: %s", cid, e)
 
-    return app, conn, clients, on_finished, http
+    async def on_finished(match_ids: list[str]):
+        await _push(match_ids, "finish")
+
+    async def on_goal(match_ids: list[str]):
+        await _push(match_ids, "goal")
+
+    return app, conn, clients, on_finished, on_goal, http
 
 
 async def _run():
-    app, conn, clients, on_finished, http = build_app()
+    app, conn, clients, on_finished, on_goal, http = build_app()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
@@ -181,7 +199,7 @@ async def _run():
         await app.start()
         await app.updater.start_polling()
         poller_task = asyncio.create_task(
-            run_poller(conn, clients, on_finished, stop))
+            run_poller(conn, clients, on_finished, stop, on_goal=on_goal))
         try:
             await stop.wait()
         finally:

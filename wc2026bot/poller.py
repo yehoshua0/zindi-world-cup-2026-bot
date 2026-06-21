@@ -1,10 +1,17 @@
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from wc2026bot.state import apply_result
+from wc2026bot.state import apply_result_ex
 
 log = logging.getLogger(__name__)
+
+
+@dataclass
+class PollOutcome:
+    finished: list[str] = field(default_factory=list)
+    goals: list[str] = field(default_factory=list)
 
 
 def poll_interval(now: datetime, next_kickoff: datetime | None,
@@ -16,8 +23,8 @@ def poll_interval(now: datetime, next_kickoff: datetime | None,
     return 21600
 
 
-async def poll_once(conn, clients) -> list[str]:
-    finished: list[str] = []
+async def poll_once_ex(conn, clients) -> PollOutcome:
+    out = PollOutcome()
     for c in clients:
         try:
             results = await c.fetch()
@@ -25,17 +32,28 @@ async def poll_once(conn, clients) -> list[str]:
             log.warning("feed %s failed: %s", type(c).__name__, e)
             continue
         for r in results:
-            if apply_result(conn, r):
-                finished.append(r.match_id)
-    return finished
+            res = apply_result_ex(conn, r)
+            if res.newly_finished:
+                out.finished.append(r.match_id)
+            elif res.goal_scored:
+                out.goals.append(r.match_id)
+    return out
 
 
-async def run_poller(conn, clients, on_finished, stop_event) -> None:
+async def poll_once(conn, clients) -> list[str]:
+    """Back-compat: just the newly-finished match ids."""
+    return (await poll_once_ex(conn, clients)).finished
+
+
+async def run_poller(conn, clients, on_finished, stop_event,
+                     on_goal=None) -> None:
     while not stop_event.is_set():
         try:
-            finished = await poll_once(conn, clients)
-            if finished:
-                await on_finished(finished)
+            out = await poll_once_ex(conn, clients)
+            if out.finished:
+                await on_finished(out.finished)
+            if out.goals and on_goal is not None:
+                await on_goal(out.goals)
             any_live = conn.execute(
                 "SELECT 1 FROM matches WHERE status='LIVE' LIMIT 1"
             ).fetchone() is not None

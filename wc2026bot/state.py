@@ -66,10 +66,23 @@ def advance_stage(conn: sqlite3.Connection, team_id: str, new_stage: str) -> Non
                      (new_stage, team_id))
 
 
+@dataclass(frozen=True)
+class ApplyOutcome:
+    newly_finished: bool
+    goal_scored: bool
+
+
 def apply_result(conn: sqlite3.Connection, r: MatchResult) -> bool:
-    prev = conn.execute("SELECT status FROM matches WHERE match_id=?",
-                        (r.match_id,)).fetchone()
+    """Back-compat wrapper: True when the match newly transitioned to FINISHED."""
+    return apply_result_ex(conn, r).newly_finished
+
+
+def apply_result_ex(conn: sqlite3.Connection, r: MatchResult) -> ApplyOutcome:
+    prev = conn.execute(
+        "SELECT status, home_score, away_score FROM matches WHERE match_id=?",
+        (r.match_id,)).fetchone()
     prev_status = prev["status"] if prev else None
+    prev_total = (prev["home_score"] + prev["away_score"]) if prev else None
     # Stage precedence: a known stage is never overwritten by 'unknown'.
     # kickoff: keep existing if the new value is empty.
     conn.execute(
@@ -123,5 +136,11 @@ def apply_result(conn: sqlite3.Connection, r: MatchResult) -> bool:
             advance_stage(conn, r.away_team_id, reached)
         # eff_stage == 'unknown': goals updated, stage left for an
         # authoritative source to supply later.
+    # Goal event: a known live match whose total score rose this poll.
+    # Excludes first sightings (prev_total is None) and the finishing poll
+    # (finish push covers that), so a goal never double-fires.
+    new_total = r.home_score + r.away_score
+    goal_scored = (prev_total is not None and new_total > prev_total
+                   and r.status == "LIVE")
     conn.commit()
-    return newly_finished
+    return ApplyOutcome(newly_finished=newly_finished, goal_scored=goal_scored)

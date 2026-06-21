@@ -1,11 +1,39 @@
 import asyncio
 import httpx
 import logging
+from dataclasses import dataclass
 from wc2026bot.state import MatchResult, make_match_id
 from wc2026bot.teams import Team
 
 log = logging.getLogger(__name__)
-URL = "https://api.football-data.org/v4/competitions/WC/matches"
+BASE = "https://api.football-data.org/v4/competitions/WC"
+URL = f"{BASE}/matches"
+SCORERS_URL = f"{BASE}/scorers"
+STANDINGS_URL = f"{BASE}/standings"
+SEASON = 2026  # starting year of the edition; pins the query against drift
+
+
+@dataclass(frozen=True)
+class Scorer:
+    name: str
+    team: str
+    goals: int
+
+
+@dataclass(frozen=True)
+class StandingRow:
+    position: int
+    team: str
+    played: int
+    points: int
+    goal_diff: int
+    goals_for: int
+
+
+@dataclass(frozen=True)
+class GroupTable:
+    group: str
+    rows: list[StandingRow]
 STATUS_MAP = {
     "SCHEDULED": "SCHEDULED", "TIMED": "SCHEDULED", "IN_PLAY": "LIVE",
     "PAUSED": "LIVE", "FINISHED": "FINISHED",
@@ -23,14 +51,15 @@ class FootballDataClient:
         if not self._key:
             return []
         headers = {"X-Auth-Token": self._key}
-        resp = await self._http.get(URL, headers=headers)
+        params = {"season": SEASON}
+        resp = await self._http.get(URL, headers=headers, params=params)
         # Football-Data throttles on the free tier; honor Retry-After once.
         if resp.status_code == 429:
             retry = resp.headers.get("Retry-After", "60")
             retry_s = int(retry) if str(retry).isdigit() else 60
             log.warning("fd: rate limited, retrying after %ss", retry_s)
             await asyncio.sleep(retry_s)
-            resp = await self._http.get(URL, headers=headers)
+            resp = await self._http.get(URL, headers=headers, params=params)
         resp.raise_for_status()
         remaining = resp.headers.get("X-Requests-Available-Minute")
         if remaining is not None and str(remaining).isdigit() and int(remaining) <= 1:
@@ -63,9 +92,47 @@ class FootballDataClient:
         return out
 
 
+    async def fetch_scorers(self, limit: int = 10) -> list[Scorer]:
+        if not self._key:
+            return []
+        resp = await self._http.get(
+            SCORERS_URL, headers={"X-Auth-Token": self._key},
+            params={"season": SEASON, "limit": limit})
+        resp.raise_for_status()
+        out: list[Scorer] = []
+        for s in resp.json().get("scorers", []):
+            out.append(Scorer(
+                name=s.get("player", {}).get("name", "?"),
+                team=s.get("team", {}).get("name", "?"),
+                goals=int(s.get("goals") or 0)))
+        return out
+
+    async def fetch_standings(self) -> list[GroupTable]:
+        if not self._key:
+            return []
+        resp = await self._http.get(
+            STANDINGS_URL, headers={"X-Auth-Token": self._key},
+            params={"season": SEASON})
+        resp.raise_for_status()
+        groups: list[GroupTable] = []
+        for g in resp.json().get("standings", []):
+            if g.get("type") not in (None, "TOTAL"):
+                continue  # skip HOME/AWAY splits, keep overall table only
+            rows = [StandingRow(
+                position=int(t.get("position") or 0),
+                team=t.get("team", {}).get("name", "?"),
+                played=int(t.get("playedGames") or 0),
+                points=int(t.get("points") or 0),
+                goal_diff=int(t.get("goalDifference") or 0),
+                goals_for=int(t.get("goalsFor") or 0),
+            ) for t in g.get("table", [])]
+            groups.append(GroupTable(group=g.get("group") or "", rows=rows))
+        return groups
+
+
 def _fd_stage(stage: str) -> str:
     return {
         "GROUP_STAGE": "group", "LAST_32": "roundof32",
         "LAST_16": "roundof16", "QUARTER_FINALS": "qf",
-        "SEMI_FINALS": "sf", "FINAL": "final",
+        "SEMI_FINALS": "sf", "THIRD_PLACE": "sf", "FINAL": "final",
     }.get(stage, "unknown")

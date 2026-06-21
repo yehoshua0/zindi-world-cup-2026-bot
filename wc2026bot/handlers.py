@@ -1,9 +1,38 @@
 import sqlite3
 
+from wc2026bot.feeds.footballdata import Scorer, GroupTable
 from wc2026bot.notify import cohort_scores, user_metrics
 from wc2026bot.validation import ParsedRow
 
 NAME_MIN, NAME_MAX = 2, 32
+
+
+def scorers_text(scorers: list[Scorer]) -> str:
+    if not scorers:
+        return "No scorer data yet."
+    lines = ["👟 Top scorers"]
+    for i, s in enumerate(scorers, start=1):
+        lines.append(f"{i}. {s.name} ({s.team}) — {s.goals}")
+    return "\n".join(lines)
+
+
+def standings_text(groups: list[GroupTable], group_filter: str | None) -> str:
+    if not groups:
+        return "No standings yet."
+    if group_filter:
+        want = group_filter.strip().upper()
+        groups = [g for g in groups
+                  if g.group.upper().replace("GROUP_", "") == want
+                  or g.group.upper() == want]
+        if not groups:
+            return f"No group '{group_filter}'."
+    out: list[str] = []
+    for g in groups:
+        out.append(f"📊 {g.group}")
+        for r in g.rows:
+            out.append(f"{r.position}. {r.team}  "
+                       f"P{r.played} Pts{r.points} GD{r.goal_diff:+d}")
+    return "\n".join(out)
 
 
 class SetNameError(Exception):
@@ -21,6 +50,8 @@ def cmd_start_text() -> str:
         "/team <ISO3> — a team's status\n"
         "/today — today's matches\n"
         "/yesterday — yesterday's matches\n"
+        "/scorers — tournament top scorers\n"
+        "/standings [group] — group tables\n"
         "/help — this message")
 
 

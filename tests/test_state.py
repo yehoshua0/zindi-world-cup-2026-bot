@@ -1,6 +1,6 @@
 from wc2026bot.db import connect, init_db, seed_teams
 from wc2026bot.teams import load_teams
-from wc2026bot.state import MatchResult, apply_result
+from wc2026bot.state import MatchResult, apply_result, apply_result_ex
 
 def _conn():
     c = connect(":memory:")
@@ -25,6 +25,45 @@ def test_live_match_does_not_finalize():
     aut = c.execute("SELECT actual_goals FROM teams_state WHERE team_id=?",
                     ("WC-2026_AUT",)).fetchone()["actual_goals"]
     assert aut == 0  # goals only committed on FINISHED
+
+def test_goal_detected_when_live_score_increases():
+    c = _conn()
+    k = "2026-06-15T18:00:00Z"
+    apply_result(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL", 0, 0,
+                 "LIVE", "group", k))
+    out = apply_result_ex(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL",
+                          1, 0, "LIVE", "group", k))
+    assert out.goal_scored is True
+    assert out.newly_finished is False
+
+
+def test_no_goal_when_live_score_unchanged():
+    c = _conn()
+    k = "2026-06-15T18:00:00Z"
+    apply_result(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL", 1, 0,
+                 "LIVE", "group", k))
+    out = apply_result_ex(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL",
+                          1, 0, "LIVE", "group", k))
+    assert out.goal_scored is False
+
+
+def test_first_sighting_is_not_a_goal():
+    c = _conn()
+    out = apply_result_ex(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL",
+                          1, 0, "LIVE", "group", "2026-06-15T18:00:00Z"))
+    assert out.goal_scored is False  # can't tell it's new on first sight
+
+
+def test_finish_does_not_double_fire_as_goal():
+    c = _conn()
+    k = "2026-06-15T18:00:00Z"
+    apply_result(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL", 1, 0,
+                 "LIVE", "group", k))
+    out = apply_result_ex(c, MatchResult("m1", "WC-2026_AUT", "WC-2026_BEL",
+                          2, 0, "FINISHED", "group", k))
+    assert out.newly_finished is True
+    assert out.goal_scored is False  # finish push covers it, no goal dup
+
 
 def test_knockout_advances_stage_forward_only():
     c = _conn()

@@ -7,6 +7,21 @@ log = logging.getLogger(__name__)
 URL = ("https://site.api.espn.com/apis/site/v2/sports/soccer/"
        "fifa.world/scoreboard")
 STATE_MAP = {"pre": "SCHEDULED", "in": "LIVE", "post": "FINISHED"}
+# ESPN exposes the round as event.season.slug, e.g. "group-stage".
+STAGE_SLUG_MAP = {
+    "group-stage": "group",
+    "round-of-32": "roundof32",
+    "round-of-16": "roundof16",
+    "quarterfinals": "qf",
+    "semifinals": "sf",
+    "3rd-place": "sf", "third-place": "sf",
+    "final": "final",
+}
+
+
+def _espn_stage(season: dict) -> str:
+    slug = (season or {}).get("slug", "")
+    return STAGE_SLUG_MAP.get(slug, "unknown")
 
 
 class EspnClient:
@@ -45,7 +60,7 @@ class EspnClient:
                 match_id=make_match_id(home.zindi_id, away.zindi_id, kickoff),
                 home_team_id=home.zindi_id, away_team_id=away.zindi_id,
                 home_score=hs, away_score=as_, status=status,
-                match_stage="unknown",
+                match_stage=_espn_stage(ev.get("season", {})),
                 kickoff_time=kickoff,
                 winner_team_id=winner))
         return out

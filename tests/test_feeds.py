@@ -36,6 +36,30 @@ def test_espn_maps_finished_match():
     assert (m.home_score, m.away_score) == (2, 1)
     assert m.status == "FINISHED"
 
+def test_espn_maps_stage_from_season_slug():
+    teams = load_teams("data/teams.csv")
+    payload = {"events": [{
+        "id": "402",
+        "status": {"type": {"state": "post"}},
+        "season": {"year": 2026, "type": 13802, "slug": "round-of-16"},
+        "competitions": [{"competitors": [
+          {"homeAway": "home", "score": "2", "team": {"displayName": "Austria"}},
+          {"homeAway": "away", "score": "1", "team": {"displayName": "Belgium"}},
+        ]}]
+    }]}
+    client = EspnClient(by_espn_name(teams), FakeHttp(payload))
+    res = asyncio.run(client.fetch())
+    assert res[0].match_stage == "roundof16"
+
+
+def test_espn_unknown_slug_falls_back():
+    teams = load_teams("data/teams.csv")
+    # ESPN sample with no season slug -> 'unknown', not a crash.
+    res = asyncio.run(
+        EspnClient(by_espn_name(teams), FakeHttp(ESPN_SAMPLE)).fetch())
+    assert res[0].match_stage == "unknown"
+
+
 def test_espn_skips_unknown_team():
     teams = load_teams("data/teams.csv")
     bad = {"events": [{"id": "9", "status": {"type": {"state": "post"}},
@@ -77,6 +101,42 @@ def test_fd_maps_match_with_stage_and_winner():
     assert m.winner_team_id == "WC-2026_AUT"
     assert (m.home_score, m.away_score) == (2, 1)
 
+def test_fd_third_place_maps_to_sf():
+    teams = load_teams("data/teams.csv")
+    sample = {"matches": [{
+        "id": 2, "status": "FINISHED", "utcDate": "2026-07-18T18:00:00Z",
+        "stage": "THIRD_PLACE",
+        "homeTeam": {"name": "Austria"}, "awayTeam": {"name": "Belgium"},
+        "score": {"fullTime": {"home": 1, "away": 0}, "winner": "HOME_TEAM"},
+    }]}
+    http = FakeHttpSeq([FakeRespHdr(sample, headers={})])
+    client = FootballDataClient(by_fd_name(teams), http, api_key="k")
+    res = asyncio.run(client.fetch())
+    assert res[0].match_stage == "sf"
+
+
+def test_fd_request_pins_season():
+    # Pin the season so the query can't drift to a neighbouring edition.
+    # No status filter: the poller needs SCHEDULED rows for next-kickoff.
+    teams = load_teams("data/teams.csv")
+
+    class RecordingHttp:
+        def __init__(self, resp):
+            self._resp = resp
+            self.calls = []
+        async def get(self, url, **kw):
+            self.calls.append((url, kw.get("params")))
+            return self._resp
+
+    http = RecordingHttp(FakeRespHdr(FD_SAMPLE, headers={}))
+    client = FootballDataClient(by_fd_name(teams), http, api_key="k")
+    asyncio.run(client.fetch())
+    _url, params = http.calls[0]
+    assert params is not None
+    assert params.get("season") == 2026
+    assert "status" not in params
+
+
 def test_fd_retries_on_429_then_succeeds():
     teams = load_teams("data/teams.csv")
     http = FakeHttpSeq([
@@ -91,6 +151,55 @@ def test_fd_no_key_returns_empty():
     teams = load_teams("data/teams.csv")
     client = FootballDataClient(by_fd_name(teams), FakeHttpSeq([]), api_key=None)
     assert asyncio.run(client.fetch()) == []
+
+def test_fd_scorers_parses_and_pins_season():
+    teams = load_teams("data/teams.csv")
+    payload = {"scorers": [
+        {"player": {"name": "Foo Bar"}, "team": {"name": "Austria"}, "goals": 4},
+        {"player": {"name": "Baz Qux"}, "team": {"name": "Belgium"}, "goals": 3},
+    ]}
+
+    class RecordingHttp:
+        def __init__(self, resp): self._resp = resp; self.calls = []
+        async def get(self, url, **kw):
+            self.calls.append((url, kw.get("params")))
+            return self._resp
+
+    http = RecordingHttp(FakeRespHdr(payload, headers={}))
+    client = FootballDataClient(by_fd_name(teams), http, api_key="k")
+    scorers = asyncio.run(client.fetch_scorers(limit=5))
+    assert scorers[0].name == "Foo Bar"
+    assert scorers[0].team == "Austria"
+    assert scorers[0].goals == 4
+    _url, params = http.calls[0]
+    assert params.get("season") == 2026
+    assert params.get("limit") == 5
+
+
+def test_fd_scorers_no_key_returns_empty():
+    teams = load_teams("data/teams.csv")
+    client = FootballDataClient(by_fd_name(teams), FakeHttpSeq([]), api_key=None)
+    assert asyncio.run(client.fetch_scorers()) == []
+
+
+def test_fd_standings_parses_groups():
+    teams = load_teams("data/teams.csv")
+    payload = {"standings": [{
+        "group": "GROUP_A", "type": "TOTAL",
+        "table": [
+            {"position": 1, "team": {"name": "Austria"}, "playedGames": 2,
+             "points": 6, "goalsFor": 5, "goalsAgainst": 1, "goalDifference": 4},
+            {"position": 2, "team": {"name": "Belgium"}, "playedGames": 2,
+             "points": 3, "goalsFor": 2, "goalsAgainst": 2, "goalDifference": 0},
+        ]}]}
+    http = FakeHttpSeq([FakeRespHdr(payload, headers={})])
+    client = FootballDataClient(by_fd_name(teams), http, api_key="k")
+    groups = asyncio.run(client.fetch_standings())
+    assert groups[0].group == "GROUP_A"
+    assert groups[0].rows[0].team == "Austria"
+    assert groups[0].rows[0].points == 6
+    assert groups[0].rows[1].position == 2
+
 
 def test_fallback_uses_second_on_empty():
     class Empty:
