@@ -11,7 +11,7 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
                           ContextTypes, filters)
 
 from wc2026bot.config import load_settings
-from wc2026bot.db import connect, init_db, seed_teams, log_event
+from wc2026bot.db import connect, init_db, seed_teams, log_event, snapshot_leaderboard
 from wc2026bot.teams import load_teams, by_espn_name, by_fd_name
 from wc2026bot.validation import parse_submission, ValidationError
 from wc2026bot.feeds.espn import EspnClient
@@ -21,6 +21,29 @@ from wc2026bot import handlers, notify
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("wc2026bot")
+
+
+async def run_daily_snapshot(conn, stop_event: asyncio.Event) -> None:
+    """Fire snapshot_leaderboard once per UTC day, ~00:05 UTC."""
+    from datetime import timezone
+    while not stop_event.is_set():
+        now = datetime.now(timezone.utc)
+        # Next 00:05 UTC
+        tomorrow = (now + timedelta(days=1)).replace(
+            hour=0, minute=5, second=0, microsecond=0)
+        delay = (tomorrow - now).total_seconds()
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=delay)
+        except asyncio.TimeoutError:
+            pass
+        if stop_event.is_set():
+            break
+        try:
+            inserted = snapshot_leaderboard(conn)
+            log_event(conn, "leaderboard_snapshot")
+            log.info("leaderboard snapshot: %d rows", inserted)
+        except Exception as e:  # noqa: BLE001
+            log.warning("snapshot failed: %s", e)
 
 
 def build_app() -> tuple:
@@ -216,11 +239,14 @@ async def _run():
         await app.updater.start_polling()
         poller_task = asyncio.create_task(
             run_poller(conn, clients, on_finished, stop, on_goal=on_goal))
+        snapshot_task = asyncio.create_task(
+            run_daily_snapshot(conn, stop))
         try:
             await stop.wait()
         finally:
             stop.set()
             await poller_task
+            await snapshot_task
             await http.aclose()
             await app.updater.stop()
             await app.stop()
