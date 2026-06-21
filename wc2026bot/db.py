@@ -89,3 +89,44 @@ def seed_teams(conn: sqlite3.Connection, teams: dict[str, Team]) -> None:
         [(t.zindi_id, t.country, t.iso3) for t in teams.values()],
     )
     conn.commit()
+
+
+def log_event(conn: sqlite3.Connection, event: str,
+              chat_id: int | None = None) -> None:
+    try:
+        conn.execute(
+            "INSERT INTO events(event, chat_id) VALUES (?,?)", (event, chat_id))
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def snapshot_leaderboard(conn: sqlite3.Connection) -> int:
+    from datetime import date
+    from wc2026bot.notify import cohort_scores, user_metrics
+    today = date.today().isoformat()
+    exists = conn.execute(
+        "SELECT 1 FROM leaderboard_snapshots WHERE snapshot_date=? LIMIT 1",
+        (today,)).fetchone()
+    if exists:
+        return 0
+    scores = cohort_scores(conn)
+    if not scores:
+        return 0
+    subs = {r["user_id"]: r["submission_id"] for r in conn.execute(
+        "SELECT user_id, submission_id FROM submissions WHERE is_active=1")}
+    rows = []
+    for u in scores:
+        sid = subs.get(u.user_id)
+        if sid is None:
+            continue
+        rmse_val, f1_val = user_metrics(conn, sid)
+        rows.append((today, u.user_id, u.rank, u.combined, rmse_val, f1_val))
+    if not rows:
+        return 0
+    conn.executemany(
+        "INSERT OR IGNORE INTO leaderboard_snapshots"
+        "(snapshot_date, user_id, rank, combined, rmse, f1) VALUES (?,?,?,?,?,?)",
+        rows)
+    conn.commit()
+    return len(rows)
