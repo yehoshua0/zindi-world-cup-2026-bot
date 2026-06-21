@@ -1,0 +1,12 @@
+ ---
+  Stats narratives pour la publication
+
+  Ces chiffres font une histoire :
+
+  - Funnel : X users ont tapé /start, Y ont mis un nom (Z%), W ont uploadé (V%)
+  - Itération : en moyenne N re-soumissions par participant actif
+  - Pic d'activité : commandes par jour corrélées aux matchs joués
+  - Leaderboard drift : σ des changements de rang par journée de match
+  - Engagement passif : users qui lisent /rank ou /today sans soumettre
+
+  ---
