@@ -52,7 +52,9 @@ def cmd_start_text() -> str:
         "/yesterday — yesterday's matches\n"
         "/scorers — tournament top scorers\n"
         "/standings [group] — group tables\n"
-        "/help — this message")
+        "/feedback <message> — report a bug or share feedback\n"
+        "/help — this message\n\n"
+        "🐛 Issues & contributions: https://github.com/yehoshua0/zindi-world-cup-2026-bot/issues")
 
 
 def register_user(conn: sqlite3.Connection, chat_id: int) -> int:

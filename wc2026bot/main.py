@@ -70,6 +70,17 @@ def build_app() -> tuple:
         EspnClient(by_espn_name(teams), http),
     ]
 
+    # Warn on startup about teams whose ESPN/FD display names may diverge
+    # from teams.csv (especially WC2026 debutants: CPV, CUW, JOR, UZB).
+    # Verify manually at their first match by checking feed logs.
+    _VERIFY_TEAMS = {"WC-2026_CPV", "WC-2026_CUW", "WC-2026_JOR", "WC-2026_UZB"}
+    for tid in _VERIFY_TEAMS:
+        t = teams.get(tid)
+        if t:
+            log.warning(
+                "feed-name verification needed at first match — %s: "
+                "espn=%r fd=%r", t.iso3, t.espn_name, t.fd_name)
+
     async def start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         handlers.register_user(conn, update.effective_chat.id)
         log_event(conn, "start", update.effective_chat.id)
@@ -186,6 +197,26 @@ def build_app() -> tuple:
             "Send me your submission as a .csv file attachment "
             "(columns: ID, total_goals, Target).")
 
+    async def feedback(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
+        cid = update.effective_chat.id
+        text = " ".join(ctx.args) if ctx.args else ""
+        if not text:
+            await update.message.reply_text(
+                "Usage: /feedback <your message>")
+            return
+        log_event(conn, "feedback", cid)
+        log.info("feedback from %s: %s", cid, text)
+        if s.feedback_chat_id:
+            name = handlers.display_name(conn, cid) or str(cid)
+            try:
+                await app.bot.send_message(
+                    s.feedback_chat_id,
+                    f"💬 Feedback from {name} ({cid}):\n{text}")
+            except Exception as e:  # noqa: BLE001
+                log.warning("feedback forward failed: %s", e)
+        await update.message.reply_text(
+            "✅ Thanks! Your feedback has been noted.")
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("setname", setname))
@@ -197,6 +228,7 @@ def build_app() -> tuple:
     app.add_handler(CommandHandler("team", team))
     app.add_handler(CommandHandler("scorers", scorers))
     app.add_handler(CommandHandler("standings", standings))
+    app.add_handler(CommandHandler("feedback", feedback))
     app.add_handler(MessageHandler(filters.Document.ALL, upload_doc))
 
     async def on_error(update: object, ctx: ContextTypes.DEFAULT_TYPE) -> None:
