@@ -45,6 +45,23 @@ CREATE TABLE IF NOT EXISTS matches (
 CREATE INDEX IF NOT EXISTS idx_pred_sub ON predictions(submission_id);
 CREATE INDEX IF NOT EXISTS idx_teams_stage ON teams_state(current_stage);
 CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status);
+CREATE TABLE IF NOT EXISTS events (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  chat_id INTEGER,
+  event   TEXT NOT NULL,
+  ts      TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_events_event ON events(event);
+CREATE INDEX IF NOT EXISTS idx_events_ts    ON events(ts);
+CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
+  snapshot_date TEXT NOT NULL,
+  user_id       INTEGER NOT NULL,
+  rank          INTEGER NOT NULL,
+  combined      REAL NOT NULL,
+  rmse          REAL NOT NULL,
+  f1            REAL NOT NULL,
+  PRIMARY KEY (snapshot_date, user_id)
+);
 """
 
 

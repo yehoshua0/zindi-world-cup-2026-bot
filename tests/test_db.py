@@ -13,3 +13,12 @@ def test_init_and_seed(tmp_path):
         ("WC-2026_AUT",)).fetchone()
     assert row["current_stage"] == "group"
     assert row["actual_goals"] == 0
+
+
+def test_events_and_snapshots_tables_exist(tmp_path):
+    conn = connect(str(tmp_path / "t.db"))
+    init_db(conn)
+    tables = {r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    assert "events" in tables
+    assert "leaderboard_snapshots" in tables
