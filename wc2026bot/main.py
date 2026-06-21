@@ -11,7 +11,7 @@ from telegram.ext import (Application, CommandHandler, MessageHandler,
                           ContextTypes, filters)
 
 from wc2026bot.config import load_settings
-from wc2026bot.db import connect, init_db, seed_teams
+from wc2026bot.db import connect, init_db, seed_teams, log_event
 from wc2026bot.teams import load_teams, by_espn_name, by_fd_name
 from wc2026bot.validation import parse_submission, ValidationError
 from wc2026bot.feeds.espn import EspnClient
@@ -48,9 +48,11 @@ def build_app() -> tuple:
 
     async def start(update: Update, _ctx: ContextTypes.DEFAULT_TYPE):
         handlers.register_user(conn, update.effective_chat.id)
+        log_event(conn, "start", update.effective_chat.id)
         await update.message.reply_text(handlers.cmd_start_text())
 
     async def help_cmd(update: Update, _ctx):
+        log_event(conn, "help", update.effective_chat.id)
         await update.message.reply_text(handlers.cmd_start_text())
 
     async def setname(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
@@ -61,8 +63,10 @@ def build_app() -> tuple:
             name = handlers.set_display_name(
                 conn, update.effective_chat.id, " ".join(ctx.args))
         except handlers.SetNameError as e:
+            log_event(conn, "setname_fail", update.effective_chat.id)
             await update.message.reply_text(f"❌ {e}")
             return
+        log_event(conn, "setname_ok", update.effective_chat.id)
         await update.message.reply_text(
             f"✅ Name set to '{name}'. Now /upload your predictions.")
 
@@ -71,28 +75,34 @@ def build_app() -> tuple:
         if gate:
             await update.message.reply_text(gate)
             return
+        log_event(conn, "cmd_me", update.effective_chat.id)
         await update.message.reply_text(
             handlers.me_text(conn, update.effective_chat.id))
 
     async def rank(update: Update, _ctx):
+        log_event(conn, "cmd_rank", update.effective_chat.id)
         await update.message.reply_text(handlers.rank_text(conn))
 
     async def today(update: Update, _ctx):
+        log_event(conn, "cmd_today", update.effective_chat.id)
         d = datetime.now().astimezone().date().isoformat()
         await update.message.reply_text(
             handlers.matches_on_text(conn, d, team_names, "today"))
 
     async def yesterday(update: Update, _ctx):
+        log_event(conn, "cmd_yesterday", update.effective_chat.id)
         d = (datetime.now().astimezone().date()
              - timedelta(days=1)).isoformat()
         await update.message.reply_text(
             handlers.matches_on_text(conn, d, team_names, "yesterday"))
 
     async def scorers(update: Update, _ctx):
+        log_event(conn, "cmd_scorers", update.effective_chat.id)
         data = await fd_client.fetch_scorers(limit=10)
         await update.message.reply_text(handlers.scorers_text(data))
 
     async def standings(update: Update, ctx):
+        log_event(conn, "cmd_standings", update.effective_chat.id)
         data = await fd_client.fetch_standings()
         grp = ctx.args[0] if ctx.args else None
         await update.message.reply_text(handlers.standings_text(data, grp))
@@ -105,6 +115,7 @@ def build_app() -> tuple:
         if not ctx.args:
             await update.message.reply_text("Usage: /team <ISO3>")
             return
+        log_event(conn, "cmd_team", update.effective_chat.id)
         await update.message.reply_text(
             handlers.team_text(conn, update.effective_chat.id,
                                ctx.args[0], team_names))
@@ -124,11 +135,13 @@ def build_app() -> tuple:
         try:
             rows = parse_submission(text, valid_ids)
         except ValidationError as e:
+            log_event(conn, "upload_fail", update.effective_chat.id)
             await update.message.reply_text(f"❌ {e}")
             return
         handlers.store_submission(
             conn, update.effective_chat.id, rows,
             hashlib.sha256(text.encode()).hexdigest())
+        log_event(conn, "upload_ok", update.effective_chat.id)
         await update.message.reply_text(
             "✅ Submission stored. /me for your live standing.")
 
@@ -144,6 +157,7 @@ def build_app() -> tuple:
         if gate:
             await update.message.reply_text(gate)
             return
+        log_event(conn, "upload_prompt", update.effective_chat.id)
         await update.message.reply_text(
             "Send me your submission as a .csv file attachment "
             "(columns: ID, total_goals, Target).")
