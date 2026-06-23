@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import logging
+import os
 import signal
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -278,6 +279,9 @@ def build_app() -> tuple:
 
 
 async def _run():
+    import uvicorn
+    from wc2026bot.api import create_app as create_api
+
     app, conn, clients, on_finished, on_goal, http = build_app()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
@@ -286,6 +290,15 @@ async def _run():
             loop.add_signal_handler(sig, stop.set)
         except (NotImplementedError, AttributeError):
             pass  # not supported on this platform (e.g. Windows)
+
+    port = int(os.environ.get("PORT", "8080"))
+    api_app = create_api()
+    uvi_config = uvicorn.Config(
+        api_app, host="0.0.0.0", port=port,
+        log_level="info", lifespan="on",
+    )
+    uvi_server = uvicorn.Server(uvi_config)
+
     async with app:
         await app.start()
         await app.updater.start_polling()
@@ -293,12 +306,15 @@ async def _run():
             run_poller(conn, clients, on_finished, stop, on_goal=on_goal))
         snapshot_task = asyncio.create_task(
             run_daily_snapshot(conn, stop))
+        api_task = asyncio.create_task(uvi_server.serve())
         try:
             await stop.wait()
         finally:
             stop.set()
+            uvi_server.should_exit = True
             await poller_task
             await snapshot_task
+            await api_task
             await http.aclose()
             await app.updater.stop()
             await app.stop()

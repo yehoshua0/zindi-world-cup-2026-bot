@@ -53,6 +53,12 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS idx_events_event ON events(event);
 CREATE INDEX IF NOT EXISTS idx_events_ts    ON events(ts);
+CREATE TABLE IF NOT EXISTS web_feedback (
+  id     INTEGER PRIMARY KEY AUTOINCREMENT,
+  rating INTEGER NOT NULL CHECK(rating BETWEEN 1 AND 5),
+  lang   TEXT    DEFAULT 'en',
+  ts     TEXT    DEFAULT (datetime('now'))
+);
 CREATE TABLE IF NOT EXISTS leaderboard_snapshots (
   snapshot_date TEXT NOT NULL,
   user_id       INTEGER NOT NULL,
