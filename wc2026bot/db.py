@@ -3,10 +3,11 @@ from wc2026bot.teams import Team
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-  user_id INTEGER PRIMARY KEY AUTOINCREMENT,
-  telegram_chat_id INTEGER UNIQUE NOT NULL,
-  display_name TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
+  user_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_chat_id INTEGER UNIQUE,
+  web_session_id   TEXT UNIQUE,
+  display_name     TEXT,
+  created_at       TEXT DEFAULT (datetime('now'))
 );
 -- Unique display names (case-insensitive); multiple NULLs allowed by SQLite.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name
@@ -81,10 +82,29 @@ def connect(path: str) -> sqlite3.Connection:
 
 
 def init_db(conn: sqlite3.Connection) -> None:
-    # Migration: add display_name to a pre-existing users table (no-op if present).
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+    # v1 → v2: add display_name
     if cols and "display_name" not in cols:
         conn.execute("ALTER TABLE users ADD COLUMN display_name TEXT")
+    # v2 → v3: make telegram_chat_id nullable, add web_session_id
+    if cols and "web_session_id" not in cols:
+        conn.execute("""
+            CREATE TABLE users_new (
+              user_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+              telegram_chat_id INTEGER UNIQUE,
+              web_session_id   TEXT UNIQUE,
+              display_name     TEXT,
+              created_at       TEXT DEFAULT (datetime('now'))
+            )""")
+        conn.execute("""
+            INSERT INTO users_new(user_id, telegram_chat_id, display_name, created_at)
+            SELECT user_id, telegram_chat_id, display_name, created_at FROM users""")
+        conn.execute("DROP TABLE users")
+        conn.execute("ALTER TABLE users_new RENAME TO users")
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_name
+              ON users(display_name COLLATE NOCASE)""")
+        conn.commit()
     conn.executescript(SCHEMA)
     conn.commit()
 
