@@ -270,10 +270,14 @@ def build_app() -> tuple:
                     log_event(conn, f"notify_{kind}_fail", cid)
 
     async def on_finished(match_ids: list[str]):
-        await _push(match_ids, "finish")
+        # DISABLED: Notifications causing excessive polling
+        # await _push(match_ids, "finish")
+        log.info("match finished: %s (notifications disabled)", match_ids)
 
     async def on_goal(match_ids: list[str]):
-        await _push(match_ids, "goal")
+        # DISABLED: Notifications causing excessive polling
+        # await _push(match_ids, "goal")
+        log.info("goal scored: %s (notifications disabled)", match_ids)
 
     return app, conn, clients, on_finished, on_goal, http
 
@@ -327,3 +331,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
