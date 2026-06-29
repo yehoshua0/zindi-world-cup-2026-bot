@@ -78,7 +78,7 @@ def _affected_user_rows(conn: sqlite3.Connection, match_id: str):
         FROM predictions p
         JOIN submissions s ON s.submission_id=p.submission_id AND s.is_active=1
         JOIN users u ON u.user_id=s.user_id
-        WHERE p.team_id IN (?, ?)
+        WHERE p.team_id IN (?, ?) AND u.telegram_chat_id IS NOT NULL
         """,
         (m["home_team_id"], m["away_team_id"]),
     ).fetchall()
@@ -133,3 +133,4 @@ def personalized_messages(conn: sqlite3.Connection, match_id: str,
         ])
         out.append((r["cid"], text))
     return out
+
